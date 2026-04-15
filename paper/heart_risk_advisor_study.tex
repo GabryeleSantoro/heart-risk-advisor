@@ -1,0 +1,555 @@
+% Heart Risk Advisor — technical report
+% Figures: run `python paper/generate_eda_figures.py` from repo root, then:
+%   cd paper && pdflatex heart_risk_advisor_study.tex (run twice so TOC/page refs settle)
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{siunitx}
+\usepackage{enumitem}
+\usepackage[colorlinks=true,linkcolor=black,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{authblk}
+
+\sisetup{round-mode=places,round-precision=3}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=blue,
+  urlcolor=blue,
+}
+
+\title{Supervised Learning for Angiographic Heart Disease Risk:\\
+  Benchmarking, Explainability, and an Interactive Demo\\
+  on UCI-Style Tabular Data}
+
+\author[1]{Gabriele Santoro}
+\affil[1]{Heart Risk Advisor repository\texorpdfstring{\\}{: }%
+\texttt{heart-risk-advisor}}
+
+\date{\today}
+
+\graphicspath{{figures/}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\textbf{Problem.} Cardiovascular disease remains a leading cause of death worldwide. Risk assessment from routine clinical variables is inconsistent; machine learning can help—but only if models are benchmarked rigorously and paired with transparent explanations.
+
+\textbf{Data and methods.} We predict binary angiographic heart disease on the UCI Cleveland benchmark ($n=303$), comparing five classifiers under stratified cross-validation. A tuned \textsc{XGBoost} pipeline is coupled with SHAP attributions and DiCE counterfactual search in a Streamlit demo.
+
+\textbf{Key numbers.} On the stratified hold-out set ($n=61$), tuned \textsc{XGBoost} achieves accuracy \num{0.787} and ROC-AUC \num{0.858}; tuned logistic regression reaches ROC-AUC \num{0.930}. With default hyperparameters, \textsc{XGBoost} CV F1 is \num{0.812} (Table~\ref{tab:benchmark_full}).
+
+\textbf{Contribution.} Beyond classification metrics, we emphasize \emph{counterfactual recourse}: diverse, constraint-aware suggestions for which feature changes could flip a prediction, complementing global and local SHAP attribution. Work is for education and research transparency only—\textbf{not} clinical validation.
+\end{abstract}
+
+\noindent\textbf{Keywords:} tabular classification; heart disease; XGBoost; model explanation; SHAP; counterfactuals; Streamlit.
+
+\setcounter{tocdepth}{3}
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+\subsection{Clinical motivation}
+
+Coronary artery disease remains a leading cause of death and disability worldwide. Angiographic confirmation is invasive and resource-intensive; history, resting measures, and exercise testing are cheap and routinely available before referral. \emph{Screening or triage}—flagging patients who merit further work-up—is therefore a natural application for decision support, provided tools are validated and used under clinician supervision. Public tabular benchmarks such as the UCI Cleveland heart disease extract~\cite{uci,detrano} encode this scenario in a reproducible form: binary risk prediction from routine clinical and stress-test variables. These datasets do not replace catheterization, but they enable standardized study of end-to-end pipelines—from ingestion to modeling to explanation.
+
+\subsection{Limitations of black-box classification}
+
+The machine learning literature often reports accuracy or ROC-AUC alone. In clinical contexts, a probability with no accompanying rationale offers little support for shared decision-making: users cannot verify whether the model relies on plausible physiology, spurious data artifacts, or subgroup shortcuts. \emph{Black-box} deployment—high reported performance with opaque internals—also complicates governance, audit, and trust. A deeper limitation is \emph{static} prediction: even a well-calibrated score does not indicate what could be changed, at what cost, to alter the outcome.
+
+\subsection{From prediction to decision support}
+
+Clinical decision support exceeds binary classification. It ideally combines \emph{(i)} discrimination calibrated to the target cohort, \emph{(ii)} transparency about which inputs drive a prediction, and \emph{(iii)} insight into \emph{actionable} levers—e.g., which modifiable inputs would move a case across the decision boundary. Post-hoc explainability (local feature attributions) and counterfactual search address \emph{(ii)} and \emph{(iii)} without requiring intrinsically interpretable models~\cite{lundberg,dice}. This study demonstrates both on a classic benchmark; it does \emph{not} claim clinical validation or readiness for real-patient deployment.
+
+\subsection{Research questions}
+
+Our empirical work is organized around three questions:
+\begin{enumerate}[label=(\arabic*), leftmargin=*, itemsep=4pt]
+  \item \textbf{Which model best classifies risk?} Benchmark several tabular classifiers under stratified cross-validation; tune and report held-out metrics for serialized pipelines.
+  \item \textbf{Which features drive predictions?} Connect the gradient boosting model to SHAP attributions; decompose local predictions in the engineered feature space.
+  \item \textbf{What minimal changes flip a high-risk prediction?} Generate diverse counterfactuals with DiCE under feature-type constraints, emphasizing \emph{recourse}—plausible alternative profiles—rather than scores alone.
+\end{enumerate}
+
+\subsection{Organization of this paper}
+
+Section~\ref{sec:related} situates this study next to prior tabular benchmarks, clinical deep learning, and explanation methods. Section~\ref{sec:methods} covers the dataset, exploratory analysis, and methodology (Section~\ref{sec:methodology}: preprocessing, model selection, metrics, global and local SHAP, DiCE recourse, and the Streamlit interface). Section~\ref{sec:results} reports cross-validation rankings, tuning outcomes, and held-out performance. Section~\ref{sec:discussion} interprets model comparisons, SHAP and counterfactual caveats, ethics of recourse, and paths toward stronger validation. Section~\ref{sec:limitations} states formal limitations of data, time, and explanation tooling. Section~\ref{sec:conclusion} summarizes contributions, restates the modifiable-feature SHAP finding, and lists future work. Section~\ref{sec:references} collects the literature cited. Appendix~\ref{sec:appendix} lists column names for quick reference.
+
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Classical models on the UCI Cleveland benchmark}
+
+The Cleveland heart disease extract is a longstanding tabular benchmark~\cite{uci,detrano}. Published comparisons typically include linear models (logistic regression), margin-based classifiers (support vector machines), tree ensembles (random forests, gradient boosting), and instance-based learners ($k$-NN). Reported metrics vary with preprocessing choices, missing-value handling, and train--test splits—so headline numbers are rarely comparable across papers. Nevertheless, these baselines remain the natural reference for new tabular classification studies. Our benchmark follows the same protocol: we evaluate logistic regression, RBF SVM, random forest, $k$-NN, and \textsc{XGBoost} under a fixed stratified CV scheme.
+
+\subsection{Deep learning on larger cardiac datasets}
+
+Recent work applies convolutional or recurrent networks to high-dimensional signals and images—ECG traces, echocardiography, cardiac MRI—often with tens of thousands of records or proprietary hospital data. These models address different targets (arrhythmia, ejection fraction, segmentation) and exploit spatial/temporal structure absent from tabular benchmarks. They are \emph{not} directly comparable to our setting: we use a small, fully tabular, publicly available cohort with binary angiography-derived labels. Citing higher accuracy from such pipelines without noting modality, cohort, and endpoint differences would be misleading; we mention deep learning only to delimit scope.
+
+\subsection{Explainable AI and SHAP in medical machine learning}
+
+Post-hoc explanation methods aim to summarize how a model uses its inputs. SHAP (SHapley Additive exPlanations) builds locally faithful additive decompositions based on Shapley values from cooperative game theory~\cite{lundberg}. In medical ML, SHAP and related tools have inspected risk models on structured EHR features, imaging pipelines, and hybrid architectures—with caveats about correlated inputs and cohort shift. Systematic reviews of explainable AI in clinical decision support highlight uneven evaluation of explanation fidelity, clinician trust, and real-world usability~\cite{abbas2025}. Our deployment uses tree-compatible SHAP (TreeExplainer) on the gradient boosting estimator over engineered tabular features.
+
+\subsection{Counterfactual frameworks}
+
+LIME approximates a classifier locally with a sparse linear surrogate~\cite{lime}. DiCE instead searches for \emph{diverse} counterfactuals that flip the predicted class while respecting user-specified constraints on which features may change and their permissible ranges~\cite{dice}. Both foreground \emph{actionability}: explanations are more useful when they respect domain rules (immutable demographics, clinically plausible vitals) rather than allowing arbitrary perturbations. We adopt DiCE for recourse-style explanations alongside SHAP attributions.
+
+\subsection{Explainability versus recourse}
+
+Two distinct questions merit separation. \textbf{Explainability (attribution)} asks \emph{why} a model assigned a particular score—which features pushed the prediction up or down. \textbf{Recourse} asks \emph{what should change}—which actionable inputs would move a decision across the boundary. Attribution can be stable while recourse is constrained by ethics and physiology; counterfactual search can surface multiple plausible ``flip'' profiles. This work demonstrates both: SHAP for attribution, DiCE for recourse.
+
+\section{Materials and Methods}
+\label{sec:methods}
+
+\subsection{Dataset}
+\label{sec:dataset}
+
+\subsubsection{Source and cohort}
+
+The UCI Heart Disease repository aggregates four sites (Cleveland, Hungary, Switzerland, Long Beach VA); subsets differ in size, coding, and inclusion criteria~\cite{uci}. This study uses the \textbf{Cleveland} extract only, shipped with the project as \url{data/heart-disease.csv}. After removing one duplicate row, the working sample contains \num{303} subjects, \num{13} input attributes, and the binary \texttt{target} column. The Cleveland subset is the most commonly benchmarked because it is complete enough for standard pipelines while remaining small enough for reproducible teaching examples.
+
+\subsubsection{Feature taxonomy and recourse policy}
+\label{sec:features}
+
+Table~\ref{tab:feature_taxonomy} lists each predictor: clinical role, observed domain, preprocessing branch (numeric: median imputation~+~scaling; categorical: mode imputation~+~one-hot), and DiCE recourse flag.
+
+\paragraph{Modifiable versus non-modifiable.}
+For SHAP attribution, all inputs may contribute. For \textbf{DiCE recourse}, we fix \textbf{\texttt{age}} and \textbf{\texttt{sex}} as \emph{non-modifiable}—reflecting immutable demographics and avoiding identity-altering suggestions. All other features are \emph{candidates} for adjustment within data-supported bounds and UI-side clinical plausibility checks. This split separates model inputs from demo-actionable levers; it is \emph{not} a claim about real-world treatability.
+
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+{\footnotesize
+\begin{longtable}{@{}p{1.05cm}p{1.05cm}p{4.05cm}p{2.35cm}p{0.95cm}p{0.85cm}@{}}
+  \caption{UCI Cleveland predictors: type, clinical meaning, domain in this file, preprocessing branch (\textbf{N}umeric vs.\ \textbf{C}ategorical), and recourse flag for DiCE (\textbf{Y}es/\textbf{N}o). Ranges are descriptive min--max on the cleaned table unless noted.}%
+  \label{tab:feature_taxonomy}\\
+  \toprule
+  Name & Type & Clinical meaning & Domain / codes & Br. & R. \\
+  \midrule
+  \endfirsthead
+  \multicolumn{6}{c}{\tablename\ \thetable{} --- \textit{continued}}\\
+  \toprule
+  Name & Type & Clinical meaning & Domain / codes & Br. & R. \\
+  \midrule
+  \endhead
+  \midrule
+  \multicolumn{6}{r}{\textit{Continued on next page}}\\
+  \endfoot
+  \bottomrule
+  \endlastfoot
+  \texttt{age} & Num & Chronological age (years). & \num{29}--\num{77} & N & N \\
+  \texttt{sex} & Bin & Sex encoded as \texttt{1}\,=\,male, \texttt{0}\,=\,female. & \{0,1\} & N & N \\
+  \texttt{cp} & Cat & Chest pain category (typical angina through asymptomatic; four levels in UCI coding). & \texttt{0}--\texttt{3} & C & Y \\
+  \texttt{trestbps} & Num & Resting blood pressure at admission (mm\,Hg). & \num{94}--\num{200} & N & Y \\
+  \texttt{chol} & Num & Serum cholesterol (mg/dl). & \num{126}--\num{564} & N & Y \\
+  \texttt{fbs} & Bin & Fasting blood sugar $>$ \SI{120}{mg/dl} indicator. & \{0,1\} & N & Y \\
+  \texttt{restecg} & Cat & Resting ECG summary (normal, ST--T changes, LV hypertrophy by ECG criteria; three levels). & \texttt{0}--\texttt{2} & C & Y \\
+  \texttt{thalach} & Num & Maximum heart rate achieved on exercise test (bpm). & \num{71}--\num{202} & N & Y \\
+  \texttt{exang} & Bin & Exercise-induced angina present. & \{0,1\} & N & Y \\
+  \texttt{oldpeak} & Num & ST depression (exercise vs.\ rest) on exercise ECG (mm). & \num{0.0}--\num{6.2} & N & Y \\
+  \texttt{slope} & Cat & Slope of peak exercise ST segment (up/flat/down; three levels). & \texttt{0}--\texttt{2} & C & Y \\
+  \texttt{ca} & Num & Count of major vessels with significant stenosis on fluoroscopy; \texttt{ca}${}=4$ encodes \emph{unknown} in UCI (mapped to \texttt{NaN}). & \texttt{0}--\texttt{3} or sentinel & N & Y \\
+  \texttt{thal} & Cat & Perfusion / thalasse\-mia stress-test category; code \texttt{0} encodes \emph{unknown} (mapped to \texttt{NaN}). & \texttt{1}--\texttt{3} when known & C & Y \\
+\end{longtable}
+}
+\noindent\textit{Br.}\ = preprocessing branch (\textbf{N}: median imputer + \texttt{StandardScaler}; \textbf{C}: mode imputer + \texttt{OneHotEncoder}). \textit{R.}\ = actionable in DiCE (\textbf{Y}/\textbf{N}). Codings are dataset-specific integers; clinical labels follow the UCI Cleveland dictionary.
+
+\subsubsection{Outcome definition and class balance}
+
+The original UCI angiographic disease variable is ordinal \texttt{0}--\texttt{4}; for binary benchmarks any positive grade is collapsed to \texttt{target}=1 (disease present) and \texttt{0} denotes absence~\cite{uci,detrano}. The distributed CSV already uses this binarized label. We predict \texttt{target}$\in\{0,1\}$ with \texttt{0}=no hemodynamically relevant disease and \texttt{1}=disease present, \emph{within this historical extract only}.
+
+Exported to \url{reports/eda_summary.json}: \num{138} negative, \num{165} positive—positive rate $\approx$\num{0.545} (54.5\%), positive:negative ratio $\approx$\num{1.20}:1, absolute deviation from \num{0.5} baseline $\approx$\num{0.045}. This is \emph{mild imbalance}: it motivates stratified splits and metrics beyond accuracy, but does not dominate learning as in highly skewed screening cohorts.
+
+\subsubsection{Missingness and imputation}
+
+The raw file contains no literal \texttt{?} tokens in feature columns; the loader still treats \texttt{?} as missing. Additional missingness arises from UCI sentinels: \texttt{ca}=4 (unknown vessel count, $n=5$) and \texttt{thal}=0 (unknown category, $n=2$). These sentinels are \emph{not} valid clinical levels; treating them as numbers would distort distances. Preprocessing maps both to \texttt{NaN} \emph{before} any fit~\cite{codeprep}.
+
+During training: numeric columns receive median imputation (robust to skew) plus \texttt{StandardScaler}; categorical columns receive mode imputation followed by \texttt{OneHotEncoder(handle\_unknown="ignore", sparse\_output=False)}. All statistics are fit on training folds only—inside each CV fold or on the training split for the held-out test—preventing leakage. Section~\ref{sec:preprocessing} details the implementation.
+
+\subsection{Exploratory analysis}
+\label{sec:eda}
+
+Univariate summaries and Pearson correlations were computed in \url{notebook/eda.ipynb}; aggregates export to \url{reports/eda_summary.json}. Figures~\ref{fig:eda_balance}--\ref{fig:eda_heatmap} show the same analysis graphically (generated by \url{paper/generate_eda_figures.py}).
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.72\linewidth]{eda_class_balance.pdf}
+  \caption{Class frequencies for the binary angiographic disease label ($n=303$ after dropping one duplicate row). The positive class (disease) is modestly more frequent ($n=165$ vs.\ $n=138$).}
+  \label{fig:eda_balance}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.88\linewidth]{eda_feature_target_correlation.pdf}
+  \caption{Pearson correlation $r$ between each numeric feature coding and the binary target ($n=303$). Bars sorted by $|r|$; values labeled to four decimals. Sign indicates direction of linear association on raw codes (not causal).}
+  \label{fig:eda_corr}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.92\linewidth]{eda_correlation_matrix.pdf}
+  \caption{Pairwise correlation matrix among numeric feature codings (mixed discrete/continuous types; interpret qualitatively).}
+  \label{fig:eda_heatmap}
+\end{figure}
+
+Table~\ref{tab:corr} lists the five largest absolute target correlations—identical to the top five bars in Figure~\ref{fig:eda_corr}—for reference. All values are descriptive only.
+
+\subsection{Methodology overview}
+
+All code artifacts are in the repository: preprocessing in \url{src/preprocessing.py}, benchmarks in \url{notebook/modeling.ipynb}, the demo in \url{app/app.py}, and serialized metrics in \url{reports/model_benchmark.json}. The subsections below detail preprocessing, model selection, evaluation metrics, and explanation tooling.
+
+\subsubsection{Preprocessing pipeline}
+\label{sec:preprocessing}
+
+\paragraph{Imputation.}
+Missing values and UCI sentinels (Section~\ref{sec:dataset}) are handled separately by column type. \textbf{Numeric} predictors (including binary indicators routed through the numeric branch) use \texttt{SimpleImputer(strategy="median")}, which is robust to skewed marginals. \textbf{Low-cardinality nominal} fields use \texttt{SimpleImputer(strategy="most\_frequent")} so imputed levels remain valid category codes. All statistics are fit on training data only inside each cross-validation fold or on the training split for the held-out evaluation.
+
+\paragraph{Encoding.}
+Nominal categoricals (\texttt{cp}, \texttt{restecg}, \texttt{slope}, \texttt{thal}) are expanded with \texttt{OneHotEncoder(handle\_unknown="ignore", sparse\_output=False)} so unseen categories at test time map to all-zero indicator blocks instead of errors, and downstream tree and linear models receive dense inputs suitable for SHAP.
+
+\paragraph{Scaling.}
+\texttt{StandardScaler} (zero mean, unit variance per column on the training fold) is applied to the numeric branch. This step is \emph{required} for stable optimization in logistic regression and RBF SVMs; for tree ensembles and $k$-NN it is effectively a monotone rescaling that does not change split order for axis-aligned trees but keeps a single comparable feature space across estimators.
+
+\paragraph{Leak-free \texttt{Pipeline} and \texttt{ColumnTransformer}.}
+Every classifier consumes the same scikit-learn \texttt{Pipeline} (\texttt{prep} $\rightarrow$ \texttt{clf}) in \url{src/preprocessing.py}. A \texttt{ColumnTransformer} routes columns to parallel branches and drops unused fields (\texttt{remainder="drop"}). Fitting the pipeline on training folds ensures imputers, encoders, and scalers never see validation or test labels, preventing information leakage.
+
+\paragraph{Tabular ingestion.}
+The helper \texttt{load\_heart\_csv} reads the CSV with \texttt{na\_values=\{?\}}. The thirteen feature columns follow a fixed order (\texttt{FEATURE\_COLUMNS}); the label is \texttt{target}.
+
+\paragraph{Unknown labels in the UCI lineage.}
+Integer sentinels \texttt{ca}${}=4$ and \texttt{thal}${}=0$ are mapped to \texttt{NaN} by a \texttt{FunctionTransformer} before imputation (\texttt{with\_sentinel\_cleaner=True} for all reported runs).
+
+\paragraph{Numeric versus categorical branches.}
+Numeric indicators use median imputation and scaling as above. Categoricals use mode imputation and one-hot encoding. Binary fields \texttt{sex}, \texttt{fbs}, and \texttt{exang} are scaled as numeric for compatibility with margin-based models.
+
+\paragraph{Output representation and explanation hooks.}
+The pipeline calls \texttt{set\_output(transform="pandas")} where supported so transformed batches retain column semantics for SHAP and DiCE. For counterfactual search, \texttt{age} and \texttt{sex} are flagged \emph{non-modifiable} in application code (Section~\ref{sec:dice_method}).
+
+\paragraph{Relation to exploratory analysis.}
+EDA in Section~\ref{sec:eda} uses raw CSV codings; all model metrics and explanations use the fitted processed space.
+
+\subsubsection{Model selection}
+\label{sec:model_selection}
+
+\paragraph{Candidate estimators.}
+We compare five classifiers on the same pipeline: \textbf{logistic regression} ($\ell_2$ regularized) as a transparent linear baseline; \textbf{RBF support vector machine} for smooth nonlinear boundaries; \textbf{$k$-nearest neighbors} as a non-parametric reference; \textbf{random forest} as a bagged tree ensemble; and \textbf{\textsc{XGBoost}}~\cite{chen2016xgboost} (binary logistic objective) as a scalable boosted tree suited to mixed types and SHAP \texttt{TreeExplainer}~\cite{lundberg2018tree}. Together they span linear, kernel, instance-based, and ensemble inductive biases.
+
+\paragraph{Data splitting and cross-validation.}
+The held-out test uses a stratified split (\texttt{test\_size}=0.2, \texttt{random\_state}=42), yielding \num{242} training and \num{61} test rows. \textbf{Stratification} preserves the $\approx$\SI{54.5}{\percent} positive rate in each fold and the test draw; without it, mild imbalance would yield optimistically biased accuracy (majority classifier) and unstable fold-wise class prevalence.
+
+\paragraph{Default leaderboard and selective tuning.}
+All models first run under \emph{default} hyperparameters with five-fold stratified CV (\texttt{shuffle=True}, seed \num{42}); scoring uses accuracy, precision, recall, F1, and ROC-AUC. \texttt{GridSearchCV} (ROC-AUC scoring) is then run only on the \textbf{two} models with highest mean CV ROC-AUC under defaults. We do \emph{not} grid-search every candidate: the goal is a reproducible teaching benchmark with controlled compute; exhaustive search across five heterogeneous families would multiply training cost and obscure whether gains come from inductive bias or tuning budget.
+
+Independently, \textsc{XGBoost} and logistic regression are \emph{always} tuned and serialized for SHAP/DiCE workflows and the Streamlit app—even when they are not in the top-two default leaderboard—so downstream artifacts exist regardless of default ranking.
+
+\paragraph{Primary selection criterion.}
+Model ranking emphasizes \textbf{mean CV ROC-AUC} and held-out ROC-AUC over accuracy alone. ROC-AUC summarizes discrimination across thresholds—relevant when clinical operating points are not fixed a priori—whereas accuracy collapses sensitivity and specificity into a single, threshold-dependent number. Tuned hyperparameters and scores are recorded in \url{reports/model_benchmark.json}.
+
+\subsubsection{Evaluation metrics}
+\label{sec:eval_metrics}
+
+\paragraph{Beyond accuracy.}
+Accuracy can mask poor minority-class performance or prevalence shifts. We therefore report precision, recall, F1, and ROC-AUC alongside accuracy for every CV fold summary.
+
+\paragraph{Precision, recall, and F1 (positive class).}
+\textbf{Recall} is the fraction of diseased subjects correctly flagged (sensitivity); \textbf{precision} is the fraction of positive predictions that are true positives. In screening contexts, false negatives (missing disease) are typically costlier than false positives (unnecessary follow-up), making recall and ROC curves preferable to accuracy alone. The F1 score is the harmonic mean of precision and recall—a single metric when both matter.
+
+\paragraph{ROC-AUC as primary benchmark.}
+ROC-AUC integrates true- and false-positive rates over thresholds; values near \num{0.5} indicate chance-level separation. We use it as the primary leaderboard statistic for model comparison (Table~\ref{tab:cv_rank}).
+
+\paragraph{Operating point.}
+At any fixed threshold, predictions yield a confusion matrix from which sensitivity (positive recall) and specificity (true negative rate) derive. We do \emph{not} fix a clinical operating point in this demo; users should interpret probabilistic outputs accordingly.
+
+\subsubsection{Global explainability with SHAP}
+\label{sec:shap_global}
+
+\paragraph{Shapley values and additive explanations.}
+SHAP attributes predictions to features using Shapley values from cooperative game theory: each feature's contribution $\phi_i$ satisfies efficiency (sum equals model output minus baseline), symmetry, and linearity under stated assumptions~\cite{lundberg}. The resulting \emph{additive} explanation approximates model behavior under feature removal or averaging relative to a background distribution.
+
+\paragraph{TreeExplainer for \textsc{XGBoost}.}
+TreeExplainer~\cite{lundberg2018tree} traverses the ensemble in polynomial time to obtain \emph{exact}, consistent Shapley values under the tree structure—unlike model-agnostic SHAP, which relies on Monte Carlo approximation. We apply it to the tuned booster in the processed feature space; attributions are on the log-odds scale by default~\cite{lundberg}.
+
+\paragraph{Global summaries and beeswarm.}
+Global importance is visualized either by sorting features by mean $|\phi|$ or by plotting a \textbf{beeswarm}: each point is one patient--feature pair, jittered along the feature axis and colored by feature value, revealing both magnitude and direction of effect. These plots complement univariate EDA correlations (Section~\ref{sec:eda}) because they reflect the fitted model, not just raw linear association.
+
+\paragraph{Clinical coherence.}
+Large positive SHAP on \texttt{oldpeak} (ST depression) and exercise angina (\texttt{exang}) align with ischemia physiology; higher \texttt{thalach} (achieved heart rate) often lowers risk—patterns consistent with stress-test interpretation, while remaining \emph{associational}, not causal.
+
+\subsubsection{Local explainability with SHAP}
+\label{sec:shap_local}
+
+\paragraph{Waterfall plots.}
+For a single query, SHAP \textbf{waterfall} plots display each feature's contribution as a signed bar stacking from the baseline expected model output to the predicted log-odds or risk score~\cite{lundberg}. The Streamlit application renders a waterfall over engineered feature names for the active patient profile (\url{app/app.py}).
+
+\paragraph{Illustrative contrast.}
+High-risk and low-risk profiles exhibit opposing SHAP patterns: a high-risk profile typically shows strong positive contributions from ST depression (\texttt{oldpeak}) and exercise angina (\texttt{exang}); a low-risk profile accumulates negative contributions from high \texttt{thalach} (achieved heart rate) and benign chest pain coding (\texttt{cp}). Users can reproduce such contrasts interactively in the UI.
+
+\subsubsection{Counterfactual recourse with DiCE}
+\label{sec:dice_method}
+
+\paragraph{Recourse versus attribution.}
+Attribution explains \emph{why} a prediction was made; \textbf{algorithmic recourse} asks which \emph{feasible} input changes would flip or improve the decision~\cite{dice}. Recourse is essential for decision support when stakeholders need actionable alternatives, not just scores.
+
+\paragraph{DiCE-ML.}
+We use the DiCE library's \texttt{Dice} explainer with a scikit-learn-compatible wrapper around the fitted pipeline~\cite{dice}. Given a query instance and training data metadata, DiCE searches for \textbf{diverse} counterfactual profiles achieving the desired class (here, ``opposite'' to the current prediction) while respecting feature mutability constraints.
+
+\paragraph{Immutability constraints.}
+\texttt{age} and \texttt{sex} are excluded from DiCE's feature set—demographic identity is not an intervention lever in this demo. All other attributes may vary within the data-supported ranges. This mirrors the SHAP distinction: attribution uses all inputs; recourse restricts to actionable ones.
+
+\paragraph{Proximity and diversity.}
+DiCE optimizes counterfactuals to be \textbf{close} to the factual instance under a feature-space distance (defaults combine scaled differences and median-absolute-deviation scaling where available), preventing arbitrarily large changes. It also enforces \textbf{diversity} across returned explanations—users see multiple qualitatively different ways to cross the decision boundary rather than a single, brittle edit.
+
+\paragraph{Number of counterfactuals.}
+The application requests \texttt{total\_CFs}=3 per query (random search, stopping threshold on predicted probability) to balance interpretability with runtime~\cite{dice,streamlit}. Presenting multiple diverse options highlights trade-offs between small changes across many features versus larger changes to fewer features.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Model benchmark comparison}
+\label{sec:bench}
+
+Table~\ref{tab:benchmark_full} reports five-fold CV means and standard deviations for all five classifiers under \emph{default} hyperparameters (exported from \url{reports/model_benchmark.json}). Rankings by mean ROC-AUC match Table~\ref{tab:cv_rank}: RBF SVM first, then logistic regression, random forest, \textsc{XGBoost}, and $k$-NN.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Stratified five-fold CV with default hyperparameters: mean $\pm$ standard deviation (training folds only). Values are reproducible from \url{reports/model_benchmark.json}.}
+  \label{tab:benchmark_full}
+  {\footnotesize
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    Model & Accuracy & Precision & Recall & F1 & ROC-AUC \\
+    \midrule
+    SVM (RBF)           & $\num{0.810} \pm \num{0.055}$ & $\num{0.823} \pm \num{0.057}$ & $\num{0.833} \pm \num{0.089}$ & $\num{0.825} \pm \num{0.056}$ & $\num{0.896} \pm \num{0.036}$ \\
+    Logistic regression & $\num{0.822} \pm \num{0.071}$ & $\num{0.820} \pm \num{0.063}$ & $\num{0.862} \pm \num{0.094}$ & $\num{0.839} \pm \num{0.069}$ & $\num{0.889} \pm \num{0.037}$ \\
+    Random Forest       & $\num{0.814} \pm \num{0.049}$ & $\num{0.830} \pm \num{0.059}$ & $\num{0.834} \pm \num{0.056}$ & $\num{0.830} \pm \num{0.044}$ & $\num{0.887} \pm \num{0.041}$ \\
+    \textsc{XGBoost}     & $\num{0.798} \pm \num{0.077}$ & $\num{0.823} \pm \num{0.076}$ & $\num{0.803} \pm \num{0.079}$ & $\num{0.812} \pm \num{0.073}$ & $\num{0.872} \pm \num{0.052}$ \\
+    $k$-NN              & $\num{0.798} \pm \num{0.048}$ & $\num{0.811} \pm \num{0.024}$ & $\num{0.818} \pm \num{0.084}$ & $\num{0.813} \pm \num{0.052}$ & $\num{0.870} \pm \num{0.050}$ \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{CV ranking by mean ROC-AUC (default hyperparameters). Same data as Table~\ref{tab:benchmark_full}, compact view.}
+  \label{tab:cv_rank}
+  \begin{tabular}{@{}llS[table-format=1.3]@{\,$\pm$\,}S[table-format=1.3]S[table-format=1.3]@{\,$\pm$\,}S[table-format=1.3]@{}}
+    \toprule
+    Rank & Model & \multicolumn{2}{c}{ROC-AUC} & \multicolumn{2}{c}{F1} \\
+    \midrule
+    1 & SVM (RBF)              & 0.896 & 0.036 & 0.825 & 0.056 \\
+    2 & Logistic regression    & 0.889 & 0.037 & 0.839 & 0.069 \\
+    3 & Random Forest          & 0.887 & 0.041 & 0.830 & 0.044 \\
+    4 & \textsc{XGBoost}      & 0.872 & 0.052 & 0.812 & 0.073 \\
+    5 & $k$-NN                 & 0.870 & 0.050 & 0.813 & 0.052 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Cross-validation versus held-out test.}
+Grid search on the top-two default models (SVM, logistic regression) attains best CV ROC-AUC \num{0.896} and \num{0.899} respectively. Independently, tuned \textsc{XGBoost} (CV ROC-AUC $\approx$\num{0.892}, \texttt{max\_depth}=5, \texttt{n\_estimators}=100, \texttt{learning\_rate}=0.05, subsample=colsubsample=0.9) and tuned logistic regression (CV ROC-AUC $\approx$\num{0.899}, \texttt{C}=0.01) are saved for deployment.
+
+On the stratified hold-out ($n=61$), \textbf{tuned logistic regression} reaches ROC-AUC \num{0.930} and accuracy \num{0.820}; \textbf{tuned \textsc{XGBoost}} reaches ROC-AUC \num{0.858} and accuracy \num{0.787}. The CV--test gap for \textsc{XGBoost} is consistent with a small evaluation split and stochastic boosting; heavily regularized linear models often generalize better on tiny tabular benchmarks. We do \emph{not} report held-out scores for SVM, random forest, or $k$-NN because the automated export persists only the two tuned pipelines used downstream (\url{reports/model_benchmark.json}).
+
+\paragraph{Comparison to literature on the Cleveland subset.}
+Reported numbers vary widely with preprocessing, duplicate handling, and binarization choices. Mid-\num{80}\%--\num{90}\% accuracy and mid-to-high \num{0.8}--\num{0.9} AUC are common across tutorials and replication studies~\cite{uci,detrano}. Recent comparisons including \textsc{XGBoost} report cross-validated accuracies in the high-\num{80}\% to low-\num{90}\% range~\cite{rayalu2025}. Our default CV means (Table~\ref{tab:benchmark_full}) fall within that broad band; they should not be naively compared to publications using different folds, site mixes, or feature sets.
+
+\subsection{Feature importance analysis}
+\label{sec:featimp}
+
+We summarize global attributions for the \textbf{deployed tuned \textsc{XGBoost} pipeline} using mean absolute SHAP values on the \emph{training} split ($n=242$), with TreeExplainer applied to the boosted trees in the processed feature space.
+
+The preprocessing pipeline emits \textbf{engineered} columns: numeric/binary inputs (\texttt{age, sex, trestbps, chol, fbs, thalach, exang, oldpeak, ca}) appear as single transformed columns; low-cardinality categoricals (\texttt{cp, restecg, slope, thal}) expand to one-hot indicators (e.g.\ \texttt{cp\_1.0}, \texttt{cp\_2.0}). To report importance in the \textbf{original} clinical attribute space, we map each engineered name to a \emph{logical} predictor: if the name contains an underscore, take the substring before it; otherwise the name maps to itself (e.g.\ \texttt{sex} $\rightarrow$ \texttt{sex}). We then sum mean $|\phi|$ across all engineered columns belonging to the same logical predictor—so one-hot levels for \texttt{cp} (and \texttt{thal}, \texttt{restecg}, \texttt{slope}) are combined, while \texttt{sex} and other single-column fields contribute their full mass under their own key.
+
+Table~\ref{tab:shap_top5} matches \url{reports/shap_global_summary.json}, produced deterministically from the saved pipeline by \texttt{scripts/export\_shap\_global\_summary.py}. That script fixes the stratified split (\texttt{random\_state}=42) and evaluates SHAP on \texttt{X\_train} only; the explainability notebook (\url{notebook/explainability.ipynb}) instead plots beeswarm and waterfall explanations on the held-out test rows for visualization.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Top five logical predictors by mean absolute SHAP value (tuned \textsc{XGBoost}, training split). Values match \url{reports/shap\_global\_summary.json}.}
+  \label{tab:shap_top5}
+  \begin{tabular}{@{}lS[table-format=1.3]@{}}
+    \toprule
+    Feature & {Mean $|\mathrm{SHAP}|$} \\
+    \midrule
+    \texttt{thal} (stress-test perfusion) & 0.983 \\
+    \texttt{cp} (chest pain type)         & 0.829 \\
+    \texttt{ca} (vessel count)            & 0.622 \\
+    \texttt{oldpeak} (ST depression)      & 0.419 \\
+    \texttt{chol} (serum cholesterol)     & 0.406 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Clinical coherence.}
+These rankings align broadly with cardiology intuition for exercise testing and angiography: greater ST depression (\texttt{oldpeak}), abnormal perfusion coding (\texttt{thal}), multivessel involvement (\texttt{ca}), and symptomatic or ischemic chest-pain patterns (\texttt{cp}) are established correlates of obstructive disease~\cite{detrano}. \textbf{Association does not imply causation}; SHAP values describe the fitted model, not treatment effects.
+
+\paragraph{Modifiable versus fixed contributions.}
+Summing mean $|\mathrm{SHAP}|$ across logical features, approximately \textbf{\SI{90}{\percent}} of the total mass arises from variables we allow DiCE to modify (\texttt{age} and \texttt{sex} contribute the remaining $\approx$\SI{10}{\percent}). Thus most of the model's global sensitivity is concentrated on \emph{actionable} inputs in our recourse policy, even though attributions themselves include demographics.
+
+\subsection{Counterfactual case studies}
+\label{sec:cf_cases}
+
+The Streamlit demo (\url{app/app.py}) runs DiCE with \texttt{total\_CFs}=3, random search (\texttt{sample\_size}=5000, \texttt{random\_seed}=42), and immutable \texttt{age}/\texttt{sex}. Counterfactuals are \textbf{stochastic} and depend on library internals and environment; we do not freeze a publication table of raw patient rows.
+
+\paragraph{Qualitative pattern.}
+On high-risk profiles, recourse plans frequently adjust stress-test--related fields (\texttt{thalach}, \texttt{oldpeak}, \texttt{exang}, \texttt{slope}) and categorical stress/imaging codes (\texttt{cp}, \texttt{thal})—consistent with Table~\ref{tab:shap_top5}. \textbf{Proximity} (sum of absolute changes on modifiable numeric features in the query frame) varies by case; per-feature deltas are visible in the app's dataframe view. \textbf{Diversity} across the three returned counterfactuals surfaces alternative edit patterns rather than a single brittle flip~\cite{dice}.
+
+\paragraph{Replication note.}
+Aggregated proximity scores and feature-change histograms should be regenerated alongside library versions when reporting formal benchmarks; the DiCE random backend can be sensitive to pandas and \texttt{dice\_ml} releases. For reproducible numbers, run the app or a notebook pinned to the repository \texttt{requirements} lockfile.
+
+\subsection{Deployment choice}
+\label{sec:deployment_choice}
+
+\texttt{notebook/modeling.ipynb} fits and saves \textbf{both} tuned pipelines---\textsc{XGBoost} and $\ell_2$ logistic regression---to disk (\texttt{models/}); the linear estimator is the stronger performer on this hold-out (Section~\ref{sec:results}) and is used in notebooks as a coefficient-based baseline. The Streamlit app (\url{app/app.py}) loads only the booster. That is not a technical necessity: DiCE supports generic sklearn models, and SHAP provides \texttt{LinearExplainer} for the logistic pipeline as well as \texttt{TreeExplainer} for trees. We chose the gradient boosting model for the public UI to keep a single nonlinear benchmark at the center of the demo, to use \textbf{exact} tree SHAP (avoiding \texttt{KernelExplainer} sampling on a small tabular set), and because counterfactual search was wired and tested against that serialized pipeline---trading a modest amount of test discrimination on this split for a unified tree-based attribution and recourse story. Readers who prefer linear explanations can follow the saved logistic pipeline in the notebooks.
+
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Non-linear models, interactions, and what the leaderboard shows}
+
+Gradient boosted trees partition the input space and capture \emph{interaction effects} (e.g.\ stress-test response patterns jointly with angiographic counts) without hand-crafted product terms. Kernel SVMs likewise allow rich, nonlinear boundaries. Under our default protocol, however, \textbf{RBF SVM and logistic regression achieved higher mean CV ROC-AUC than \textsc{XGBoost}} (Table~\ref{tab:benchmark_full}), and tuned logistic regression reached \textbf{test ROC-AUC $\approx\num{0.93}$} on the small hold-out—so we do \emph{not} claim \textsc{XGBoost} ``outperformed'' simpler models here. This ranking is consistent with high variance on $n\approx 300$ and with strong linear separability after preprocessing: a well-regularized linear model can match or beat shallow boosting under default grids.
+
+The interactive app instantiates the tuned booster only; the rationale is scope and implementation convenience, not incompatibility of simpler models with SHAP or DiCE (Section~\ref{sec:deployment_choice}).
+
+\subsection{SHAP, correlation, and clinically entangled features}
+
+SHAP values attribute the model's prediction to each feature \emph{marginally} relative to a background distribution~\cite{lundberg}. When predictors are \textbf{correlated}—as with angiographic vessel count (\texttt{ca}) and stress-test perfusion codes (\texttt{thal}), both reflecting myocardial ischemia anatomy—Shapley-style splits of ``credit'' are not unique: importance can \emph{shift} between collinear inputs depending on background sampling and tree path structure. Readers should treat global SHAP rankings (Table~\ref{tab:shap_top5}) as model-dependent summaries, not as independent causal effects of each measurement.
+
+\subsection{Clinical plausibility of counterfactuals}
+
+DiCE returns \textbf{feasible} values in data space that flip the classifier—not causal interventions over time. A suggestion to lower \texttt{chol} or increase \texttt{thalach} may be mathematically close to the factual row yet \textbf{medically unrealistic} as a short-term maneuver (lipids change over months; maximal heart rate is constrained by conditioning and medications). Counterfactuals also ignore temporal ordering (resting labs before stress testing). They are best read as \emph{scenario} edits for discussion—``what would the model say if these fields looked different?''—rather than prescriptions. Real clinical use would require domain constraints, rate limits on changes, and alignment with guidelines beyond this demo.
+
+\subsection{Ethics of recourse and patient autonomy}
+
+Fixing \texttt{age} and \texttt{sex} as non-modifiable encodes a normative choice: \textbf{demographic attributes are not levers} for algorithmic ``fixes,'' mirroring respect for identity and non-discrimination norms. Allowing cholesterol, blood pressure, or exercise-test outcomes to vary reflects a different idea—that some risk factors are, in principle, \textbf{influenced by behavior or care}, even though the model does not verify feasibility or access to care. This supports \textbf{patient autonomy} in the weak sense of surfacing actionable-looking levers rather than blaming fixed traits; it is not a substitute for shared decision-making with a clinician. Recourse outputs must not be mistaken for guaranteed health outcomes.
+
+\subsection{Toward discrimination beyond $\approx$\num{0.93} test ROC-AUC}
+
+The tuned logistic regression hold-out ROC-AUC near \num{0.93} is already high for a single \num{61}-subject split on a \num{303}-row benchmark; pushing \textbf{past} that level meaningfully requires more than retuning the same CSV. Realistic steps: \textbf{larger, multi-site cohorts} with contemporary labels; \textbf{richer features} (biomarkers, medications, imaging, longitudinal trajectories); \textbf{proper external validation} and calibration; \textbf{ensemble or deep tabular} models with careful leakage control; and reporting \textbf{calibration, fairness, and decision-curve} metrics rather than AUC alone. Gains on Cleveland alone often saturate or reflect split noise—\textbf{state-of-the-art} clinical AI is evaluated on prospective data and task-specific endpoints, not on reproducing a 1980s angiography proxy at ever-higher offline AUC~\cite{detrano}. \textbf{Formal limitations} (sample size, single-site cohort, no longitudinal data, no counterfactual validation, imputation choices) are in Section~\ref{sec:limitations}.
+
+\section{Limitations}
+\label{sec:limitations}
+
+\subsection{Sample size and generalization}
+
+After deduplication the Cleveland extract contains \num{303} labeled rows; supervised fits and the held-out test draw (\num{61} subjects) are \textbf{small} by clinical standards. High-variance metrics, unstable model rankings across seeds, and \textbf{overfitting} risk—especially for flexible estimators and for post-hoc explanations on the same training distribution—limit \textbf{generalization} to other hospitals, eras, and inclusion criteria. External validation on contemporary multi-site data is essential before any real-world use.
+
+\subsection{Single-site cohort and demographic bias}
+
+The UCI Cleveland subset reflects \textbf{one institution} and recruitment era~\cite{detrano}. Demographics (encoded \texttt{sex}, age structure) and referral patterns may not match global populations; models and explanations can inherit \textbf{selection and representation bias}. Fairness assessment and subgroup reporting were out of scope but are mandatory for equitable deployment.
+
+\subsection{Static cross-section versus longitudinal reality}
+
+Inputs are a \textbf{single time slice}: no longitudinal trajectories for cholesterol, blood pressure, or repeated testing. Risk evolves; interventions act over months to years. The model cannot represent \textbf{dynamics}, treatment response, or causal pathways—only associations at one documentation moment.
+
+\subsection{Counterfactuals are optimization artifacts, not clinical recommendations}
+
+DiCE counterfactuals minimize \textbf{mathematical} distance and classification loss subject to constraints; they are \textbf{not} physician-reviewed, do not incorporate guidelines or contraindications, and may suggest rare or unsafe profiles. Use them only as \textbf{discussion aids} in an educational tool—not as prescriptions.
+
+\subsection{Missing data and imputation choices}
+
+Unknown entries come from UCI sentinels and are imputed with \textbf{median} (numeric) or \textbf{mode} (categorical) on the training fold—standard defaults that remain \textbf{modeling choices}. Alternative assumptions (joint models, multiple imputation, MNAR hypotheses) could change predictions and explanations. These decisions warrant \textbf{domain-expert} review and sensitivity analysis in any serious study.
+
+\subsection{Regulatory and clinical scope}
+
+This work is \textbf{not} a clinical trial, device validation, or substitute for professional judgment. Prospective evaluation, monitoring, and governance would be required for any medical application.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+\subsection{Summary of contributions}
+
+We delivered an \textbf{end-to-end, reproducible stack} for binary angiographic risk on the Cleveland tabular benchmark: exploratory analysis with exported summaries, a leak-free preprocessing \texttt{Pipeline}, systematic comparison of five classifiers with metrics and tuned models archived in \url{reports/model_benchmark.json}, and a \textbf{single integrated tool} (\url{app/app.py}) that combines prediction, \textbf{SHAP} local attribution, and \textbf{DiCE} counterfactual recourse~\cite{lundberg,dice,streamlit}. The emphasis is not only accuracy but \textbf{inspectability}: users can see \emph{why} a score arose and explore \emph{what-if} edits consistent with a declared modifiable/non-modifiable policy.
+
+\subsection{Key finding on actionable signal}
+
+Aggregating mean absolute SHAP mass across \emph{logical} inputs (Section~\ref{sec:featimp}, Table~\ref{tab:shap_top5}, \url{reports/shap_global_summary.json}), roughly \textbf{\SI{90}{\percent}} of the global attribution mass falls on features marked \textbf{modifiable in DiCE} (all predictors except \texttt{age} and \texttt{sex}); $\approx$\SI{10}{\percent} attaches to fixed demographics. Interpreting this as ``clinical actionability'' would over-claim—SHAP measures association in the fitted model, not treatment effects. Still, under our policy, \textbf{most model sensitivity concentrates on inputs that can be discussed as levers}—supporting the design goal of coupling risk scores with recourse-oriented explanations rather than demographics-only narratives.
+
+\subsection{Future work}
+
+Natural extensions: \textbf{larger, multi-site cohorts} with contemporary labels and standardized feature definitions; \textbf{prospective clinical validation} with pre-specified endpoints and calibration; \textbf{integration with electronic health record} workflows (FHIR-based ingestion, audit logs, clinician-in-the-loop review); and \textbf{federated or privacy-preserving learning} for multi-institutional collaboration without centralizing raw tables. Subgroup fairness, decision-curve analysis, and uncertainty quantification remain open for any deployment path.
+
+\subsection{Closing remark}
+
+This project is for \textbf{education and research transparency only}. It is \textbf{not} a substitute for professional diagnosis and does \textbf{not} constitute a validated medical device.
+
+\section{References}
+\label{sec:references}
+
+\begin{thebibliography}{99}
+
+\bibitem{uci}
+Dua, D. and Graff, C. (2019).
+\newblock UCI Machine Learning Repository.
+\newblock \url{https://archive.ics.uci.edu/}
+
+\bibitem{detrano}
+Detrano, R., et al. (1989).
+\newblock International application of a new probability algorithm for diagnosing coronary artery disease.
+\newblock \emph{American Journal of Cardiology}.
+
+\bibitem{codeprep}
+Santoro, G. Heart Risk Advisor: \url{src/preprocessing.py} (Apache-2.0).
+\newblock \url{https://github.com/GabryeleSantoro/heart-risk-advisor}
+
+\bibitem{lundberg}
+Lundberg, S. M. and Lee, S.-I. (2017).
+\newblock A unified approach to interpreting model predictions.
+\newblock \emph{Advances in Neural Information Processing Systems}.
+
+\bibitem{lundberg2018tree}
+Lundberg, S. M., Erion, G. G., and Lee, S.-I. (2018).
+\newblock Consistent individualized feature attribution for tree ensembles.
+\newblock arXiv:1802.03888.
+\newblock \url{https://arxiv.org/abs/1802.03888}
+
+\bibitem{lime}
+Ribeiro, M. T., Singh, S., and Guestrin, C. (2016).
+\newblock ``Why should I trust you?'' Explaining the predictions of any classifier.
+\newblock \emph{Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining}.
+
+\bibitem{dice}
+Mothilal, R. K., Sharma, A., and Tan, C. (2020).
+\newblock Explaining machine learning classifiers through diverse counterfactual explanations.
+\newblock \emph{Proceedings of the 2020 Conference on Fairness, Accountability, and Transparency}.
+
+\bibitem{streamlit}
+Streamlit Inc. Streamlit documentation.
+\newblock \url{https://streamlit.io/}
+
+\bibitem{chen2016xgboost}
+Chen, T. and Guestrin, C. (2016).
+\newblock XGBoost: A Scalable Tree Boosting System.
+\newblock In \emph{Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining (KDD)}, pp.~785--794.
+\newblock DOI: \href{https://doi.org/10.1145/2939672.2939785}{10.1145/2939672.2939785}
+
+\bibitem{rayalu2025}
+Teja, M. D. and Rayalu, G. M. (2025).
+\newblock Optimizing heart disease diagnosis with advanced machine learning models: a comparison of predictive performance.
+\newblock \emph{BMC Cardiovascular Disorders}, 25:212.
+\newblock DOI: \href{https://doi.org/10.1186/s12872-025-04627-6}{10.1186/s12872-025-04627-6}
+
+\bibitem{abbas2025}
+Abbas, Q., Jeong, W., and Lee, S. W. (2025).
+\newblock Explainable AI in Clinical Decision Support Systems: A Meta-Analysis of Methods, Applications, and Usability Challenges.
+\newblock \emph{Healthcare (Basel)}, 13(17):2154.
+\newblock DOI: \href{https://doi.org/10.3390/healthcare13172154}{10.3390/healthcare13172154}
+
+\end{thebibliography}
+
+\appendix
+\section{Column names (quick reference)}
+\label{sec:appendix}
+
+The thirteen inputs are named \texttt{age}, \texttt{sex}, \texttt{cp}, \texttt{trestbps}, \texttt{chol}, \texttt{fbs}, \texttt{restecg}, \texttt{thalach}, \texttt{exang}, \texttt{oldpeak}, \texttt{slope}, \texttt{ca}, \texttt{thal}; the binary outcome is \texttt{target}. Full definitions appear in Section~\ref{sec:features}; the fitted preprocessing pipeline is described in Section~\ref{sec:preprocessing}.
+
+\end{document}

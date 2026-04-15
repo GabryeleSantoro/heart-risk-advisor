@@ -1,0 +1,86 @@
+\contentsline {section}{\numberline {1}Introduction}{3}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Clinical motivation}{3}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Limitations of black-box classification}{3}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}From prediction to decision support}{3}{subsection.1.3}%
+\contentsline {subsection}{\numberline {1.4}Research questions}{3}{subsection.1.4}%
+\contentsline {subsection}{\numberline {1.5}Organization of this paper}{3}{subsection.1.5}%
+\contentsline {section}{\numberline {2}Related Work}{4}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Classical models on the UCI Cleveland benchmark}{4}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Deep learning on larger cardiac datasets}{4}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Explainable AI and SHAP in medical machine learning}{4}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Counterfactual frameworks}{4}{subsection.2.4}%
+\contentsline {subsection}{\numberline {2.5}Explainability versus recourse}{4}{subsection.2.5}%
+\contentsline {section}{\numberline {3}Materials and Methods}{5}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Dataset}{5}{subsection.3.1}%
+\contentsline {subsubsection}{\numberline {3.1.1}Source and cohort}{5}{subsubsection.3.1.1}%
+\contentsline {subsubsection}{\numberline {3.1.2}Feature taxonomy and recourse policy}{5}{subsubsection.3.1.2}%
+\contentsline {paragraph}{Modifiable versus non-modifiable.}{5}{section*.2}%
+\contentsline {subsubsection}{\numberline {3.1.3}Outcome definition and class balance}{6}{subsubsection.3.1.3}%
+\contentsline {subsubsection}{\numberline {3.1.4}Missingness and imputation}{6}{subsubsection.3.1.4}%
+\contentsline {subsection}{\numberline {3.2}Exploratory analysis}{6}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Methodology overview}{6}{subsection.3.3}%
+\contentsline {subsubsection}{\numberline {3.3.1}Preprocessing pipeline}{9}{subsubsection.3.3.1}%
+\contentsline {paragraph}{Imputation.}{9}{section*.6}%
+\contentsline {paragraph}{Encoding.}{9}{section*.7}%
+\contentsline {paragraph}{Scaling.}{9}{section*.8}%
+\contentsline {paragraph}{Leak-free \texttt {Pipeline} and \texttt {ColumnTransformer}.}{9}{section*.9}%
+\contentsline {paragraph}{Tabular ingestion.}{9}{section*.10}%
+\contentsline {paragraph}{Unknown labels in the UCI lineage.}{9}{section*.11}%
+\contentsline {paragraph}{Numeric versus categorical branches.}{9}{section*.12}%
+\contentsline {paragraph}{Output representation and explanation hooks.}{9}{section*.13}%
+\contentsline {paragraph}{Relation to exploratory analysis.}{9}{section*.14}%
+\contentsline {subsubsection}{\numberline {3.3.2}Model selection}{9}{subsubsection.3.3.2}%
+\contentsline {paragraph}{Candidate estimators.}{9}{section*.15}%
+\contentsline {paragraph}{Data splitting and cross-validation.}{10}{section*.16}%
+\contentsline {paragraph}{Default leaderboard and selective tuning.}{10}{section*.17}%
+\contentsline {paragraph}{Primary selection criterion.}{10}{section*.18}%
+\contentsline {subsubsection}{\numberline {3.3.3}Evaluation metrics}{10}{subsubsection.3.3.3}%
+\contentsline {paragraph}{Beyond accuracy.}{10}{section*.19}%
+\contentsline {paragraph}{Precision, recall, and F1 (positive class).}{10}{section*.20}%
+\contentsline {paragraph}{ROC-AUC as primary benchmark.}{10}{section*.21}%
+\contentsline {paragraph}{Operating point.}{10}{section*.22}%
+\contentsline {subsubsection}{\numberline {3.3.4}Global explainability with SHAP}{10}{subsubsection.3.3.4}%
+\contentsline {paragraph}{Shapley values and additive explanations.}{10}{section*.23}%
+\contentsline {paragraph}{TreeExplainer for \textsc {XGBoost}.}{11}{section*.24}%
+\contentsline {paragraph}{Global summaries and beeswarm.}{11}{section*.25}%
+\contentsline {paragraph}{Clinical coherence.}{11}{section*.26}%
+\contentsline {subsubsection}{\numberline {3.3.5}Local explainability with SHAP}{11}{subsubsection.3.3.5}%
+\contentsline {paragraph}{Waterfall plots.}{11}{section*.27}%
+\contentsline {paragraph}{Illustrative contrast.}{11}{section*.28}%
+\contentsline {subsubsection}{\numberline {3.3.6}Counterfactual recourse with DiCE}{11}{subsubsection.3.3.6}%
+\contentsline {paragraph}{Recourse versus attribution.}{11}{section*.29}%
+\contentsline {paragraph}{DiCE-ML.}{11}{section*.30}%
+\contentsline {paragraph}{Immutability constraints.}{11}{section*.31}%
+\contentsline {paragraph}{Proximity and diversity.}{11}{section*.32}%
+\contentsline {paragraph}{Number of counterfactuals.}{12}{section*.33}%
+\contentsline {section}{\numberline {4}Results}{12}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Model benchmark comparison}{12}{subsection.4.1}%
+\contentsline {paragraph}{Cross-validation versus held-out test.}{12}{section*.36}%
+\contentsline {paragraph}{Comparison to literature on the Cleveland subset.}{12}{section*.37}%
+\contentsline {subsection}{\numberline {4.2}Feature importance analysis}{13}{subsection.4.2}%
+\contentsline {paragraph}{Clinical coherence.}{13}{section*.39}%
+\contentsline {paragraph}{Modifiable versus fixed contributions.}{13}{section*.40}%
+\contentsline {subsection}{\numberline {4.3}Counterfactual case studies}{13}{subsection.4.3}%
+\contentsline {paragraph}{Qualitative pattern.}{14}{section*.41}%
+\contentsline {paragraph}{Replication note.}{14}{section*.42}%
+\contentsline {subsection}{\numberline {4.4}Deployment choice}{14}{subsection.4.4}%
+\contentsline {section}{\numberline {5}Discussion}{14}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Non-linear models, interactions, and what the leaderboard shows}{14}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}SHAP, correlation, and clinically entangled features}{14}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Clinical plausibility of counterfactuals}{15}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Ethics of recourse and patient autonomy}{15}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}Toward discrimination beyond $\approx $\num {0.93} test ROC-AUC}{15}{subsection.5.5}%
+\contentsline {section}{\numberline {6}Limitations}{15}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Sample size and generalization}{15}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Single-site cohort and demographic bias}{15}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Static cross-section versus longitudinal reality}{16}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Counterfactuals are optimization artifacts, not clinical recommendations}{16}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}Missing data and imputation choices}{16}{subsection.6.5}%
+\contentsline {subsection}{\numberline {6.6}Regulatory and clinical scope}{16}{subsection.6.6}%
+\contentsline {section}{\numberline {7}Conclusion}{16}{section.7}%
+\contentsline {subsection}{\numberline {7.1}Summary of contributions}{16}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Key finding on actionable signal}{16}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Future work}{17}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}Closing remark}{17}{subsection.7.4}%
+\contentsline {section}{\numberline {8}References}{17}{section.8}%
+\contentsline {section}{\numberline {A}Column names (quick reference)}{18}{appendix.A}%

@@ -206,3 +206,6 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 TODO.md
+
+# Paper: figure exports from paper/generate_eda_figures.py (PDF/PNG)
+paper/figures/

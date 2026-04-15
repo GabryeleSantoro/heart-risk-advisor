@@ -111,9 +111,9 @@ A small **local web interface** is included if you want to explore predictions a
 
 ## Model performance
 
-Metrics are produced in [`notebook/modeling.ipynb`](notebook/modeling.ipynb) and summarized in [`reports/model_benchmark.json`](reports/model_benchmark.json) (run the notebook through the **last cell** to regenerate that file).
+Metrics are produced in [`notebook/modeling.ipynb`](notebook/modeling.ipynb) and summarized in [`reports/model_benchmark.json`](reports/model_benchmark.json) (run the notebook through the **last cell** to regenerate that file). Each CV fold records **accuracy, precision, recall, F1, and ROC-AUC**—the README table highlights ROC-AUC and F1; see the JSON (or the technical report in [`paper/heart_risk_advisor_study.tex`](paper/heart_risk_advisor_study.tex)) for the full set.
 
-**Experimental setup:** stratified train/test split (**242 / 61** rows, 80/20, `random_state=42`). Each model uses the shared preprocessing pipeline from `src/preprocessing.py`. The benchmark uses **5-fold stratified cross-validation** on the training fold only.
+**Experimental setup:** stratified train/test split (**242 / 61** rows, `test_size=0.2`, `random_state=42`). Each model uses the shared preprocessing pipeline from `src/preprocessing.py`. The benchmark uses **5-fold stratified cross-validation** on the training fold only.
 
 ### Benchmark with default hyperparameters
 
@@ -125,15 +125,21 @@ Five models are compared with library defaults; ranking below is by **mean CV RO
 |    2 | Logistic regression | 0.889 ± 0.037        | 0.839 ± 0.069   |
 |    3 | Random Forest     | 0.887 ± 0.041        | 0.830 ± 0.044   |
 |    4 | **XGBoost**         | 0.872 ± 0.052        | 0.812 ± 0.073   |
-|    5 | k-NN                | 0.870 ± 0.050        | 0.813 ± 0.052   |
+|    5 | k-nearest neighbors (k-NN) | 0.870 ± 0.050        | 0.813 ± 0.052   |
 
-`GridSearchCV` (scoring **ROC-AUC**, same CV splitter) is then run on the **top two** from this table—here **SVM** and **logistic regression**—to study sensitivity to hyperparameters.
+`GridSearchCV` (scoring **ROC-AUC**, same CV splitter) is then run on the **top two** from this table—here **SVM** and **logistic regression**—to study sensitivity to hyperparameters. **XGBoost is not part of that top-two sweep** (it ranked fourth under defaults).
 
 ### Tuned pipelines used in the repo
 
-Both **XGBoost** and **logistic regression** are tuned with `GridSearchCV` and saved under `models/` (see the notebook). After tuning, **cross-validated ROC-AUC** on the training set is about **0.892** for the XGBoost pipeline and **0.899** for logistic regression (exact values and best parameters are in `model_benchmark.json`).
+**Independently** of the top-two search, [`notebook/modeling.ipynb`](notebook/modeling.ipynb) always runs **focused** `GridSearchCV` fits for **XGBoost** and **logistic regression** so both pipelines can be saved under `models/` (SHAP/DiCE and a linear baseline). The **~0.892** / **~0.899** CV ROC-AUC figures are the best scores from **those** dedicated grids (`tuned_pipelines_saved` in the JSON), not from tuning **SVM** (the top default model). Exact values and parameters: [`reports/model_benchmark.json`](reports/model_benchmark.json).
 
-On the **held-out test set**, logistic regression achieves a higher **ROC-AUC** than XGBoost (**~0.930 vs ~0.858**) and slightly higher accuracy (**~0.820 vs ~0.787**). Despite that, the **Streamlit app uses the tuned XGBoost model** as the primary predictor: gradient-boosted trees align well with **SHAP** and **DiCE** for the interactive explanations in this project, while the saved logistic pipeline remains a strong **linear baseline** for comparison in the notebooks.
+On the **held-out test set**, logistic regression achieves a higher **ROC-AUC** than XGBoost (**~0.930 vs ~0.858**) and slightly higher accuracy (**~0.820 vs ~0.787**). The **Streamlit app loads only the tuned XGBoost pipeline** for predictions and explanations. That is a **scope choice**, not a limitation of SHAP or DiCE: SHAP also supports linear models (e.g. `LinearExplainer`), and DiCE works with generic sklearn estimators; we standardized the UI on **exact tree SHAP** (`TreeExplainer`) and the DiCE configuration tested against this booster. The saved **logistic regression** artifact remains the primary **linear baseline** in the notebooks.
+
+**Global SHAP table** (mean |SHAP| by logical feature, training split) is exported to [`reports/shap_global_summary.json`](reports/shap_global_summary.json). Regenerate it from the repo root with:
+
+```bash
+python scripts/export_shap_global_summary.py
+```
 
 > [!NOTE]
 > Single small test sets are noisy; the gap between CV and hold-out (and between models) should not be over-interpreted. Nothing here constitutes clinical validation.
@@ -153,6 +159,8 @@ flowchart LR
     S --> UI
     C --> UI
 ```
+
+The diagram reflects **what the app runs**: a single tuned boosting pipeline into the UI. A tuned **logistic regression** model is also saved under `models/` and used in notebooks as a baseline; it is not wired into Streamlit.
 
 ---
 
@@ -183,7 +191,9 @@ streamlit run app/app.py
 | `data/`     | CSV used for training / demo                                   |
 | `models/`   | Serialized model artifacts                                     |
 | `notebook/` | Jupyter workflows (modelling, explainability, counterfactuals) |
-| `reports/`  | Exported metrics: `model_benchmark.json`, `eda_summary.json`   |
+| `paper/`    | Technical report (`heart_risk_advisor_study.tex`) and EDA figure script |
+| `reports/`  | Exported metrics: `model_benchmark.json`, `eda_summary.json`, `shap_global_summary.json` |
+| `scripts/`  | `export_shap_global_summary.py` — regenerates logical-feature SHAP summary JSON |
 
 ---
 

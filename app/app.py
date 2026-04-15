@@ -30,6 +30,8 @@ from src.preprocessing import (
     load_heart_csv,
 )
 
+# Features DiCE may nudge as "continuous" (includes 0/1 numerics from NUMERIC_FEATURES; true
+# categoricals use OHE in the pipeline and are not listed here).
 CONTINUOUS_FOR_DICE = [
     "age",
     "trestbps",
