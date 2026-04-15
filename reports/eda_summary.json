@@ -1,0 +1,153 @@
+{
+  "meta": {
+    "source_notebook": "notebook/eda.ipynb",
+    "data_file": "data/heart-disease.csv",
+    "n_rows": 303,
+    "n_feature_columns": 13,
+    "duplicate_rows": 1,
+    "notes": "Stratified split below uses test_size=0.25 for EDA; notebook/modeling.ipynb uses test_size=0.2 and random_state=42 for benchmarks."
+  },
+  "target": {
+    "column": "target",
+    "labels": {
+      "0": "No disease (0)",
+      "1": "Disease (1)"
+    },
+    "class_counts": {
+      "0": 138,
+      "1": 165
+    },
+    "proportion_positive": 0.5445544554455446,
+    "majority_minority_ratio_pos_to_neg": 1.1957,
+    "imbalance_abs_deviation_from_half": 0.044554455445544594
+  },
+  "missing_tokens_in_csv": {
+    "per_column_na_count": {
+      "age": 0,
+      "sex": 0,
+      "cp": 0,
+      "trestbps": 0,
+      "chol": 0,
+      "fbs": 0,
+      "restecg": 0,
+      "thalach": 0,
+      "exang": 0,
+      "oldpeak": 0,
+      "slope": 0,
+      "ca": 0,
+      "thal": 0
+    },
+    "total_na_cells_features": 0
+  },
+  "uci_unknown_sentinel_codes_in_raw_file": {
+    "ca_equal_4_count": 5,
+    "thal_equal_0_count": 2,
+    "note": "Preprocessing maps these to NaN before imputation (see src/preprocessing.py)."
+  },
+  "numeric_feature_summary": {
+    "age": {
+      "mean": 54.3663,
+      "std": 9.0821,
+      "min": 29.0,
+      "max": 77.0
+    },
+    "sex": {
+      "mean": 0.6832,
+      "std": 0.466,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "cp": {
+      "mean": 0.967,
+      "std": 1.0321,
+      "min": 0.0,
+      "max": 3.0
+    },
+    "trestbps": {
+      "mean": 131.6238,
+      "std": 17.5381,
+      "min": 94.0,
+      "max": 200.0
+    },
+    "chol": {
+      "mean": 246.264,
+      "std": 51.8308,
+      "min": 126.0,
+      "max": 564.0
+    },
+    "fbs": {
+      "mean": 0.1485,
+      "std": 0.3562,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "restecg": {
+      "mean": 0.5281,
+      "std": 0.5259,
+      "min": 0.0,
+      "max": 2.0
+    },
+    "thalach": {
+      "mean": 149.6469,
+      "std": 22.9052,
+      "min": 71.0,
+      "max": 202.0
+    },
+    "exang": {
+      "mean": 0.3267,
+      "std": 0.4698,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "oldpeak": {
+      "mean": 1.0396,
+      "std": 1.1611,
+      "min": 0.0,
+      "max": 6.2
+    },
+    "slope": {
+      "mean": 1.3993,
+      "std": 0.6162,
+      "min": 0.0,
+      "max": 2.0
+    },
+    "ca": {
+      "mean": 0.7294,
+      "std": 1.0226,
+      "min": 0.0,
+      "max": 4.0
+    },
+    "thal": {
+      "mean": 2.3135,
+      "std": 0.6123,
+      "min": 0.0,
+      "max": 3.0
+    }
+  },
+  "pearson_correlation_with_target": {
+    "exang": -0.4368,
+    "cp": 0.4338,
+    "oldpeak": -0.4307,
+    "thalach": 0.4217,
+    "ca": -0.3917,
+    "slope": 0.3459,
+    "thal": -0.344,
+    "sex": -0.2809,
+    "age": -0.2254,
+    "trestbps": -0.1449,
+    "restecg": 0.1372,
+    "chol": -0.0852,
+    "fbs": -0.028
+  },
+  "stratified_train_test_check": {
+    "test_size": 0.25,
+    "random_state": 42,
+    "global_positive_rate": 0.5445544554455446,
+    "train_positive_rate": 0.5462555066079295,
+    "test_positive_rate": 0.5394736842105263
+  },
+  "sklearn_balanced_class_weights_reference": {
+    "0": 1.0978260869565217,
+    "1": 0.9181818181818182
+  }
+}

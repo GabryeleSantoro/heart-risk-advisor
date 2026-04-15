@@ -1,0 +1,131 @@
+{
+  "meta": {
+    "source_notebook": "notebook/modeling.ipynb",
+    "random_state": 42,
+    "train_rows": 242,
+    "test_rows": 61,
+    "cv": "5-fold StratifiedKFold (shuffle=True)",
+    "benchmark_note": "Default hyperparameters for all five models; mean ROC-AUC ranks models. Top two receive GridSearchCV. XGBoost and Logistic Regression are always tuned and saved for the app (SHAP/DiCE) and a linear baseline."
+  },
+  "cross_validation_default_hyperparameters": [
+    {
+      "model": "Logistic Regression",
+      "accuracy_mean": 0.821939,
+      "accuracy_std": 0.07105,
+      "precision_mean": 0.820433,
+      "precision_std": 0.063152,
+      "recall_mean": 0.862393,
+      "recall_std": 0.093635,
+      "f1_mean": 0.839247,
+      "f1_std": 0.069465,
+      "roc_auc_mean": 0.88907,
+      "roc_auc_std": 0.036846
+    },
+    {
+      "model": "SVM",
+      "accuracy_mean": 0.809779,
+      "accuracy_std": 0.055357,
+      "precision_mean": 0.82325,
+      "precision_std": 0.057293,
+      "recall_mean": 0.833048,
+      "recall_std": 0.089181,
+      "f1_mean": 0.825307,
+      "f1_std": 0.056325,
+      "roc_auc_mean": 0.896232,
+      "roc_auc_std": 0.03597
+    },
+    {
+      "model": "Random Forest",
+      "accuracy_mean": 0.814031,
+      "accuracy_std": 0.049265,
+      "precision_mean": 0.830037,
+      "precision_std": 0.05869,
+      "recall_mean": 0.833618,
+      "recall_std": 0.056136,
+      "f1_mean": 0.830238,
+      "f1_std": 0.043748,
+      "roc_auc_mean": 0.886888,
+      "roc_auc_std": 0.040803
+    },
+    {
+      "model": "XGBoost",
+      "accuracy_mean": 0.797534,
+      "accuracy_std": 0.076807,
+      "precision_mean": 0.823416,
+      "precision_std": 0.075588,
+      "recall_mean": 0.802564,
+      "recall_std": 0.079316,
+      "f1_mean": 0.811844,
+      "f1_std": 0.073365,
+      "roc_auc_mean": 0.87186,
+      "roc_auc_std": 0.052377
+    },
+    {
+      "model": "k-NN",
+      "accuracy_mean": 0.797619,
+      "accuracy_std": 0.047574,
+      "precision_mean": 0.811178,
+      "precision_std": 0.023772,
+      "recall_mean": 0.818234,
+      "recall_std": 0.08446,
+      "f1_mean": 0.813161,
+      "f1_std": 0.051809,
+      "roc_auc_mean": 0.870487,
+      "roc_auc_std": 0.050236
+    }
+  ],
+  "ranking_by_mean_roc_auc": [
+    "SVM",
+    "Logistic Regression",
+    "Random Forest",
+    "XGBoost",
+    "k-NN"
+  ],
+  "grid_search_on_top_two_defaults": {
+    "models": [
+      "SVM",
+      "Logistic Regression"
+    ],
+    "best_cv_roc_auc": {
+      "SVM": 0.8962315462315462,
+      "Logistic Regression": 0.898951048951049
+    },
+    "best_params": {
+      "SVM": {
+        "clf__C": 1.0,
+        "clf__gamma": "scale"
+      },
+      "Logistic Regression": {
+        "clf__C": 0.01
+      }
+    }
+  },
+  "tuned_pipelines_saved": {
+    "xgboost": {
+      "best_cv_roc_auc": 0.8917637917637918,
+      "best_params": {
+        "clf__colsample_bytree": 0.9,
+        "clf__learning_rate": 0.05,
+        "clf__max_depth": 5,
+        "clf__n_estimators": 100,
+        "clf__subsample": 0.9
+      }
+    },
+    "logistic_regression": {
+      "best_cv_roc_auc": 0.898951048951049,
+      "best_params": {
+        "clf__C": 0.01
+      }
+    }
+  },
+  "holdout_test_set": {
+    "xgboost": {
+      "roc_auc": 0.8582251082251082,
+      "accuracy": 0.7868852459016393
+    },
+    "logistic_regression": {
+      "roc_auc": 0.9296536796536796,
+      "accuracy": 0.819672131147541
+    }
+  }
+}
