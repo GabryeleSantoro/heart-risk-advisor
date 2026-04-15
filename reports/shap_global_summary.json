@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "source": "scripts/export_shap_global_summary.py",
+    "model": "models/xgboost_pipeline.joblib",
+    "split": "train_test_split test_size=0.2 random_state=42 stratify=y",
+    "shap_rows": "training split only (same split as modeling notebook; matches paper SHAP table)",
+    "shap": "TreeExplainer on prep.transform(X_train); mean absolute SHAP per engineered column, then summed by logical raw feature: one-hot levels for cp, restecg, slope, thal share a prefix before '_'; numeric/binary columns (age, sex, trestbps, ...) are single columns and map to themselves."
+  },
+  "mean_abs_shap_top5_logical": [
+    {
+      "feature": "thal",
+      "mean_abs_shap": 0.983
+    },
+    {
+      "feature": "cp",
+      "mean_abs_shap": 0.829
+    },
+    {
+      "feature": "ca",
+      "mean_abs_shap": 0.622
+    },
+    {
+      "feature": "oldpeak",
+      "mean_abs_shap": 0.419
+    },
+    {
+      "feature": "chol",
+      "mean_abs_shap": 0.406
+    }
+  ],
+  "shap_mass_modifiable_vs_fixed": {
+    "fraction_modifiable_features": 0.9007,
+    "fraction_age_sex": 0.0993,
+    "note": "Sum of mean |SHAP| over logical features excluding {age, sex} divided by sum over all logical features."
+  }
+}
