@@ -1,6 +1,8 @@
 <div align="center">
 
 # Heart Risk Advisor
+Supervised ML for cardiovascular risk estimation — XGBoost on tabular clinical data, with SHAP and counterfactual tooling in a Streamlit demo.
+
 
 **Supervised ML for cardiovascular risk estimation** — XGBoost on tabular clinical data, with SHAP and counterfactual tooling in a Streamlit demo.
 
